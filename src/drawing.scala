@@ -1,16 +1,8 @@
+import processing.core.PConstants._
 import processing.core._
-import PConstants._
+import scala.concurrent._
+import ExecutionContext.Implicits.global
 
-
-object StraightScalaRunner {
-  def main(args: Array[String]) {
-    PApplet.main(Array("DrawingPart"))
-  }
-}
-
-object Params {
-  val infty = 1000000.0f
-}
 
 class DrawingPart extends PApplet {
 
@@ -26,36 +18,30 @@ class DrawingPart extends PApplet {
     case _ => Nil
   }
 
-  def drawPolygon(pg: Polygon, rgb: Int) {
+  def drawPolygon(pg: Polygon, rgb: Int, alp: Int) {
     if (pg.pls.isEmpty && pg.prs.isEmpty)
       return
     stroke(rgb)
-    fill(rgb, 20)
+    fill(rgb, alp)
     beginShape()
     // we start with the uppermost point
-    val tp = pg.topPoint
-    vertex(tp.x, tp.y)
+    val tp = pg.topPoints
+    for (p <- tp)
+      vertex(p.x, p.y)
     // now we build right border
     for (p <- internalCrossPoints(pg.prs))
       vertex(p.x, p.y)
-    if (pg.prs.isEmpty) {
-      vertex(Params.infty, -Params.infty)
-      vertex(Params.infty, Params.infty)
-    }
-    val bp = pg.botPoint
-    vertex(bp.x, bp.y)
+    val bp = pg.botPoints
+    for (p <- bp)
+      vertex(p.x, p.y)
     for (p <- internalCrossPoints(pg.pls.reverse))
       vertex(p.x, p.y)
-    if (pg.pls.isEmpty) {
-      vertex(-Params.infty, Params.infty)
-      vertex(-Params.infty, -Params.infty)
-    }
     endShape(CLOSE)
   }
 
   override def setup {
     background(0)
-    size(1000, 700)
+    size(Params.width, Params.height)
     state = Selecting()
   }
 
@@ -64,13 +50,11 @@ class DrawingPart extends PApplet {
     state match {
       case Selecting() => {
         stroke(255)
-        for (l <- lines) {
-          drawPolygon(new Polygon(l), 255)
-        }
+        for (l <- lines)
+          drawPolygon(new Polygon(l), 255, 20)
         stroke(color(255, 0, 0))
-        if (candLine != null) {
-          drawPolygon(new Polygon(candLine), color(255, 0, 0))
-        }
+        if (candLine != null)
+          drawPolygon(new Polygon(candLine), color(255, 0, 0), 40)
         stroke(color(227, 66, 52))
         fill(color(227, 66, 52))
         rect(10, height - 60, 100, 50)
@@ -85,10 +69,36 @@ class DrawingPart extends PApplet {
         text("start", 30, height - 27)
       }
       case Running(ap) => {
-        fill(0, 102, 153)
-        textSize(50)
-        text("algPart", width / 2 - 50, height / 2 - 20)
+        for (i <- 0 to ap.beg - 1)
+          drawPolygon(new Polygon(ap.hps(i)), color(47, 79, 79), 5)
+        for (i <- ap.beg to ap.end - 1)
+          drawPolygon(new Polygon(ap.hps(i)), 255, 8)
+        for (i <- ap.end to ap.hps.length - 1)
+          drawPolygon(new Polygon(ap.hps(i)), color(47, 79, 79), 5)
+        if (ap.sweepLine != null) {
+          val sline = ap.sweepLine
+          val p1 = ap.iPol1
+          val p2 = ap.iPol2
+          drawPolygon(p1, color(0, 0, 255), 20)
+          drawPolygon(p2, color(0, 255, 0), 20)
+          val upbeach = new Polygon(new StraightLine(0, -1, -sline.level))
+          //          drawPolygon(upbeach, color(255, 0, 0), 100)
+          drawPolygon(sline.currentPolygon(), color(255, 127, 0), 50)
+          //          drawPolygon(new AlgorithmPart(Array()).intersectPolygons(sline.currentPolygon(), upbeach), color(255, 127, 0), 100)
+          fill(255)
+          textSize(15)
+          text("beg: " ++ ap.beg.toString ++ ", end: " ++ ap.end.toString, 30, height - 32)
+          text("level: " ++ sline.level.toString, 30, height - 16)
+        } else {
+          fill(255)
+          textSize(20)
+          text("beg: " ++ ap.beg.toString ++ ", end: " ++ ap.end.toString, 30, height - 27)
+        }
       }
+      case Finished(pg) =>
+        for (l <- lines)
+          drawPolygon(new Polygon(l), 255, 20)
+        drawPolygon(pg, color(255, 127, 0), 100)
     }
   }
 
@@ -102,6 +112,8 @@ class DrawingPart extends PApplet {
   }
 
   override def mouseReleased {
+    if (12 <= mouseX && mouseX <= 12 + 96 && height - 58 <= mouseY && mouseY <= height - 58 + 46)
+      return
     lines = candLine :: lines
     candLine = null
   }
@@ -109,10 +121,33 @@ class DrawingPart extends PApplet {
   override def mouseClicked {
     state match {
       case Selecting() => {
-        if (12 <= mouseX && mouseX <= 12 + 96 && height - 58 <= mouseY && mouseY <= height - 58 + 46)
-          state = Running(new AlgorithmPart(lines.toArray))
+        if (12 <= mouseX && mouseX <= 12 + 96 && height - 58 <= mouseY && mouseY <= height - 58 + 46) {
+          val ap = new AlgorithmPart(lines.toArray)
+          state = Running(ap)
+          val f = future {
+            ap.halfPlanesIntersection()
+          }
+          f onSuccess {
+            case pg => state = Finished(pg)
+          }
+
+        }
       }
       case _ => {}
     }
   }
+}
+
+object StraightScalaRunner {
+  def main(args: Array[String]) {
+    PApplet.main(Array("DrawingPart"))
+  }
+}
+
+object Params {
+  val infty = 1000000.0f
+  val eps = 1 / infty
+  val delay = 1000
+  val width = 1500
+  val height = 1000
 }
