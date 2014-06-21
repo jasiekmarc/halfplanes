@@ -1,7 +1,8 @@
 import processing.core.PConstants._
 import processing.core._
+
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent._
-import ExecutionContext.Implicits.global
 
 
 class DrawingPart extends PApplet {
@@ -83,6 +84,8 @@ class DrawingPart extends PApplet {
           drawPolygon(p2, color(0, 255, 0), 20)
           val upbeach = new Polygon(new StraightLine(0, -1, -sline.level))
           //          drawPolygon(upbeach, color(255, 0, 0), 100)
+          stroke(color(255, 0, 0))
+          line(-Params.infty, sline.level, Params.infty, sline.level)
           drawPolygon(sline.currentPolygon(), color(255, 127, 0), 50)
           //          drawPolygon(new AlgorithmPart(Array()).intersectPolygons(sline.currentPolygon(), upbeach), color(255, 127, 0), 100)
           fill(255)

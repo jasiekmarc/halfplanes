@@ -84,6 +84,8 @@ class Polygon(val pls: List[StraightLine], val prs: List[StraightLine]) {
       }
     case (Nil, Nil) => null
   }
+
+  def isEmpty = pls.isEmpty && prs.isEmpty
 }
 
 case class Selecting() extends AppState
@@ -116,23 +118,15 @@ class AlgorithmPart(val hps: Array[StraightLine]) {
   }
 
   def intersectPolygons(p1: Polygon, p2: Polygon): Polygon = {
+    if (p1.isEmpty || p2.isEmpty)
+      return new Polygon(List(), List())
     iPol1 = p1
     iPol2 = p2
-    val hora = Math.max(p1.topPoints().head.y, p2.topPoints().head.y)
-    def clearTop(ls: List[StraightLine], f: (Float, Float) => Boolean) = ls match {
-      case l1 :: l2 :: lsp => if (f(l2 xfory hora, l1 xfory hora)) ls.tail else ls
-      case _ => ls
-    }
-    def lt(x: Float, y: Float) = x <= y
-    def gt(x: Float, y: Float) = x >= y
-    sweepLine = new SweepLine(clearTop(p1.pls, gt), clearTop(p1.prs, lt), clearTop(p2.pls, gt), clearTop(p2.prs, lt))
-    sweepLine.level = hora
-    sweepLine.initializeSweep()
+    sweepLine = new SweepLine(p1, p2)
+    sweepLine.init()
     do {
+      sweepLine.nextPI()
       Thread.sleep(Params.delay)
-      sweepLine.nextIP()
-      Thread.sleep(Params.delay)
-      print(".")
     } while (!sweepLine.finito)
     val ret = sweepLine.currentPolygon()
     println("\tret => " ++ ret.toString)
@@ -143,179 +137,111 @@ class AlgorithmPart(val hps: Array[StraightLine]) {
     ret
   }
 
-  class SweepLine(var bal: List[StraightLine], var bar: List[StraightLine], var bbl: List[StraightLine], var bbr: List[StraightLine]) {
+  class SweepLine(var bl: Array[List[StraightLine]], var br: Array[List[StraightLine]]) {
     var level: Float = 0.0f
-    var brushA: Array[StraightLine] = Array(null, null)
-    var brushB: Array[StraightLine] = Array(null, null)
-    var edgeCodes: Set[Int] = Set()
-    // 1 = bal, 2 = bar, 3 = bbl, 4 = bbr
-    var leftSoFar: List[StraightLine] = Nil
-    var rightSoFar: List[StraightLine] = Nil
+    var hasBeenOpen: Boolean = false
     var finito: Boolean = false
+    var leftCurEdge: StraightLine = null
+    var rightCurEdge: StraightLine = null
+    var leftIntBor: List[StraightLine] = Nil
+    var rightIntBor: List[StraightLine] = Nil
 
-    def initializeSweep() {
-      if (bal.nonEmpty)
-        brushA(0) = bal.head
-      if (bar.nonEmpty)
-        brushA(1) = bar.head
-      if (bbl.nonEmpty)
-        brushB(0) = bbl.head
-      if (bbr.nonEmpty)
-        brushB(1) = bbr.head
-      if (isIntersectionNonEmpty) {
-        // dodać kody krawędzi wielokąta
-        (bal, bbl) match {
-          case (l1 :: _, l3 :: _) =>
-            if ((l1 xfory level) > (l3 xfory level)) {
-              edgeCodes += 1
-              leftSoFar = List(l1)
-            } else {
-              edgeCodes += 3
-              leftSoFar = List(l3)
-            }
-          case (l1 :: _, Nil) =>
-            edgeCodes += 1
-            leftSoFar = List(l1)
-          case (Nil, l3 :: _) =>
-            edgeCodes += 3
-            leftSoFar = List(l3)
-          case (Nil, Nil) => {}
-        }
-        (bar, bbr) match {
-          case (l2 :: _, l4 :: _) =>
-            if ((l2 xfory level) < (l4 xfory level)) {
-              edgeCodes += 2
-              rightSoFar = List(l2)
-            } else {
-              edgeCodes += 4
-              rightSoFar = List(l4)
-            }
-          case (l2 :: _, Nil) =>
-            edgeCodes += 2
-            rightSoFar = List(l2)
-          case (Nil, l4 :: _) =>
-            edgeCodes += 4
-            rightSoFar = List(l4)
-          case (Nil, Nil) => {}
-        }
+    def this(p1: Polygon, p2: Polygon) = this(List(p1.pls, p2.pls).filter(xs => xs.nonEmpty).toArray, List(p1.prs, p2.prs).filter(xs => xs.nonEmpty).toArray)
+
+    def init() {
+      level = -Params.infty
+      bl = bl.sortBy(xs => xs.head xfory level)
+      br = br.sortBy(xs => xs.head xfory level)
+      leftCurEdge = if (bl.isEmpty) null else bl.last.head
+      rightCurEdge = if (br.isEmpty) null else br.head.head
+      hasBeenOpen = isOpen
+      if (isOpen) {
+        leftIntBor = if (bl.isEmpty) Nil else List(bl.last.head)
+        rightIntBor = if (br.isEmpty) Nil else List(br.head.head)
       }
-      println("\tStarting level: " ++ level.toString)
-      println("\tedgeCodes: " ++ edgeCodes.toString)
     }
 
-    def leftAB: Boolean = {
-      brushA(1) != null && brushB(0) != null && (brushA(1) xfory level) < (brushB(0) xfory level)
-    }
+    def nextPI() {
+      val nextCrossL = bl match {
+        case Array(ls1, ls2) => if ((ls1.head cross ls2.head).y > level) (ls1.head cross ls2.head).y else Params.infty
+        case _ => Params.infty
+      }
+      val nextCrossR = br match {
+        case Array(ls1, ls2) => if ((ls1.head cross ls2.head).y > level) (ls1.head cross ls2.head).y else Params.infty
+        case _ => Params.infty
+      }
 
-    def rightAB: Boolean = {
-      brushA(0) != null && brushB(1) != null && (brushA(0) xfory level) > (brushB(1) xfory level)
-    }
+      val nextCrossLR =
+        if (leftCurEdge == null || rightCurEdge == null)
+          Params.infty
+        else if ((leftCurEdge cross rightCurEdge).y > level)
+          (leftCurEdge cross rightCurEdge).y
+        else
+          Params.infty
 
-    def nextIP() {
-      def ipls(ls: List[StraightLine]): Float = ls match {
+      def nextEC(ls: List[StraightLine]): Float = ls match {
         case l1 :: l2 :: _ => (l1 cross l2).y
         case _ => Params.infty
       }
-      val (nextEdgesChangePoint, nextEdgesChanging) = List(bal, bar, bbl, bbr).map(ipls).zip(List(1, 2, 3, 4)).minBy(_._1)
-      var totBrush = brushA.zip(List(1, 2)).filter(x => x._1 != null) ++ brushB.zip(List(3, 4)).filter(x => x._1 != null)
-      totBrush = totBrush.sortWith((l1, l2) => (l1._1 xfory (level + Params.eps)) < (l2._1 xfory (level + Params.eps)))
 
-      var nextIntersectionPoint = Params.infty
-      var nextIntersecting = (0, 0)
-      for (i <- 1 to totBrush.length - 1) {
-        val c = (totBrush(i)._1 cross totBrush(i - 1)._1).y
-        if (c > level && c < nextIntersectionPoint) {
-          nextIntersectionPoint = c
-          nextIntersecting = (totBrush(i - 1)._2, totBrush(i)._2)
-        }
-      }
+      val nextEdgeChangeL = if (bl.nonEmpty) bl.map(nextEC).zip(List(0, 1)).minBy(x => x._1) else (Params.infty, -1)
+      val nextEdgeChangeR = if (br.nonEmpty) br.map(nextEC).zip(List(0, 1)).minBy(x => x._1) else (Params.infty, -1)
 
-      // Now we know, that the next point of interest may be of two types.
-      //  - It might be the beginning of another edge on one of four boundaries (nextEdgesChangePoint)
-      //  - It might be an intersection of some of the boundaries (nextIntersectionPoint)
-      if (nextEdgesChangePoint < nextIntersectionPoint) {
-        level = nextEdgesChangePoint
-        printf("\t%f - edgeChanging %d\n", level, nextEdgesChanging)
-        nextEdgesChanging match {
-          case 1 =>
-            bal = bal.tail
-            brushA(0) = bal.head
-          case 2 =>
-            bar = bar.tail
-            brushA(1) = bar.head
-          case 3 =>
-            bbl = bbl.tail
-            brushB(0) = bbl.head
-          case 4 =>
-            bbr = bbr.tail
-            brushB(1) = bbr.head
-        }
-        if (edgeCodes contains nextEdgesChanging)
-          nextEdgesChanging match {
-            case 1 =>
-              leftSoFar = bal.head :: leftSoFar
-            case 2 =>
-              rightSoFar = bar.head :: rightSoFar
-            case 3 =>
-              leftSoFar = bbl.head :: leftSoFar
-            case 4 =>
-              rightSoFar = bbr.head :: rightSoFar
-          }
-      } else {
-        printf("\t%f - intersection - (%d, %d)\n", nextIntersectionPoint, nextIntersecting._1, nextIntersecting._2)
-        if (nextIntersectionPoint == Params.infty) {
+
+      val nextEvent = List(nextCrossL, nextCrossR, nextCrossLR, nextEdgeChangeL._1, nextEdgeChangeR._1).min
+
+      printf("\tnextEvent (%f): ", nextEvent)
+      nextEvent match {
+        case Params.infty =>
+          println("none")
           finito = true
-          return
-        }
-        level = nextIntersectionPoint
-        if (edgeCodes.isEmpty && isIntersectionNonEmpty) {
-          edgeCodes += nextIntersecting._1
-          edgeCodes += nextIntersecting._2
-          nextIntersecting match {
-            case (2, 3) =>
-              leftSoFar = List(bbl.head)
-              rightSoFar = List(bar.head)
-            case (4, 1) =>
-              leftSoFar = List(bal.head)
-              rightSoFar = List(bbr.head)
+        case `nextCrossL` =>
+          println("CrossL")
+          bl = bl.reverse
+          if (isOpen)
+            leftIntBor = bl.last.head :: leftIntBor
+          leftCurEdge = bl.last.head
+        case `nextCrossR` =>
+          println("CrossR")
+          br = br.reverse
+          if (isOpen)
+            rightIntBor = br.head.head :: rightIntBor
+          rightCurEdge = br.head.head
+        case `nextCrossLR` =>
+          println("CrossLR")
+          if (isOpen)
+            finito = true
+          else {
+            hasBeenOpen = true
+            leftIntBor = List(leftCurEdge)
+            rightIntBor = List(rightCurEdge)
           }
-        } else if (Set(nextIntersecting._1, nextIntersecting._2) subsetOf edgeCodes) {
-          finito = true
-          return
-        } else {
-          val inting = edgeCodes & Set(nextIntersecting._1, nextIntersecting._2)
-          if (inting.nonEmpty)
-            inting.head match {
-              case 1 =>
-                edgeCodes -= 1
-                edgeCodes += 3
-                leftSoFar = bbl.head :: leftSoFar
-              case 2 =>
-                edgeCodes -= 2
-                edgeCodes += 4
-                rightSoFar = bbr.head :: rightSoFar
-              case 3 =>
-                edgeCodes -= 3
-                edgeCodes += 1
-                leftSoFar = bal.head :: leftSoFar
-              case 4 =>
-                edgeCodes -= 4
-                edgeCodes += 2
-                rightSoFar = bar.head :: rightSoFar
-            }
-        }
+        case nextEdgeChangeL._1 =>
+          println("EdgeChangeL")
+          bl(nextEdgeChangeL._2) = bl(nextEdgeChangeL._2).tail
+          if (nextEdgeChangeL._2 == bl.length - 1) {
+            leftCurEdge = bl(nextEdgeChangeL._2).head
+            if (isOpen)
+              leftIntBor = leftCurEdge :: leftIntBor
+          }
+        case nextEdgeChangeR._1 =>
+          println("EdgeChangeR")
+          br(nextEdgeChangeR._2) = br(nextEdgeChangeR._2).tail
+          if (nextEdgeChangeR._2 == 0) {
+            rightCurEdge = br(nextEdgeChangeR._2).head
+            if (isOpen)
+              rightIntBor = rightCurEdge :: rightIntBor
+          }
       }
-      println("\t\t-- edgeCodes: " ++ edgeCodes.toString())
+      level = nextEvent
     }
 
-    // see, if sweepline is crossing the resulting polygon
-    def isIntersectionNonEmpty: Boolean = {
-      (brushA(0) == null || brushB(1) == null || (brushA(0) xfory (level + Params.eps)) <= (brushB(1) xfory (level + Params.eps))) &&
-        (brushA(1) == null || brushB(0) == null || (brushA(1) xfory (level + Params.eps)) >= (brushB(0) xfory (level + Params.eps)))
+    def isOpen: Boolean = (leftCurEdge, rightCurEdge) match {
+      case (l: StraightLine, r: StraightLine) =>
+        (l xfory (level + Params.eps)) <= (r xfory (level + Params.eps))
+      case _ => true
     }
 
-    def currentPolygon(): Polygon = {
-      new Polygon(leftSoFar.reverse, rightSoFar.reverse)
-    }
+    def currentPolygon() = new Polygon(leftIntBor.reverse, rightIntBor.reverse)
   }
 }
