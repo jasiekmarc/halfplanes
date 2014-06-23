@@ -141,16 +141,11 @@ class DrawingPart extends PApplet {
   }
 }
 
-object StraightScalaRunner {
-  def main(args: Array[String]) {
-    PApplet.main(Array("DrawingPart"))
-  }
-}
 
 object Params {
   val infty = 1000000.0f
   val eps = 1 / infty
   val delay = 1000
-  val width = 1500
-  val height = 1000
+  val width = 1200
+  val height = 750
 }
