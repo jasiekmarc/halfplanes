@@ -124,6 +124,7 @@ class AlgorithmPart(val hps: Array[StraightLine]) {
     iPol2 = p2
     sweepLine = new SweepLine(p1, p2)
     sweepLine.init()
+    Thread.sleep(Params.delay)
     do {
       sweepLine.nextPI()
       Thread.sleep(Params.delay)

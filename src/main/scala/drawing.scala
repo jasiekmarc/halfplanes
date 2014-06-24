@@ -43,6 +43,8 @@ class DrawingPart extends PApplet {
   override def setup {
     background(0)
     size(Params.width, Params.height)
+    if (frame != null)
+      frame.setResizable(true)
     state = Selecting()
   }
 
@@ -143,7 +145,7 @@ class DrawingPart extends PApplet {
 
 
 object Params {
-  val infty = 1000000.0f
+  val infty = 100000.0f
   val eps = 1 / infty
   val delay = 1000
   val width = 1200

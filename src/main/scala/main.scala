@@ -1,7 +1,7 @@
 import processing.core._
 import java.io.File
 
-object StraightScalaRunner {
+object ComputationalGeometryProject {
 
   def main(args: Array[String]) {
 
