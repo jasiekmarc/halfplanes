@@ -92,12 +92,16 @@ class DrawingPart extends PApplet {
           //          drawPolygon(new AlgorithmPart(Array()).intersectPolygons(sline.currentPolygon(), upbeach), color(255, 127, 0), 100)
           fill(255)
           textSize(15)
-          text("beg: " ++ ap.beg.toString ++ ", end: " ++ ap.end.toString, 30, height - 32)
-          text("level: " ++ sline.level.toString, 30, height - 16)
+          val m = (ap.end - ap.beg) / 2
+          text("intersecting (%d - %d) and (%d - %d)".format(ap.beg, m, m, ap.end), 30, height - 32)
+          text("sweep-line level: " ++ sline.level.toString, 35, height - 16)
         } else {
           fill(255)
-          textSize(20)
-          text("beg: " ++ ap.beg.toString ++ ", end: " ++ ap.end.toString, 30, height - 27)
+          textSize(15)
+          if (ap.end - ap.beg == 1)
+            text("single half-plane (number %d)".format(ap.beg), 30, height - 27)
+          else
+            text("dividing (%d - %d)".format(ap.beg, ap.end), 30, height - 27)
         }
       }
       case Finished(pg) =>
